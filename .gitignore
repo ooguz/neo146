@@ -1,0 +1,15 @@
+.env
+.env.local
+.vscode
+# Project-specific
+smsgw.db
+smsgw
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
