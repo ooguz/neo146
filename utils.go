@@ -158,11 +158,11 @@ func fetchWikipediaSummary(query string, langCode string) (string, error) {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return "", fmt.Errorf("Wikipedia article not found for '%s' in language '%s'", query, langCode)
+		return "", fmt.Errorf("wikipedia article not found for '%s' in language '%s'", query, langCode)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Wikipedia API returned status: %d", resp.StatusCode)
+		return "", fmt.Errorf("wikipedia API returned status: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
