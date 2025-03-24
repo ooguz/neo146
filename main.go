@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"smsgw/providers"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
@@ -30,6 +32,7 @@ const (
 )
 
 var currentEnv Environment
+var smsManager *providers.Manager
 
 type SMSPayload struct {
 	MessageID       int    `json:"message_id"`
@@ -43,21 +46,15 @@ type SMSPayload struct {
 	ReceivedAt      string `json:"received_at"`
 }
 
-type SMSMessage struct {
-	Msg  string `json:"msg"`
-	Dest string `json:"dest"`
-	ID   string `json:"id"`
-}
-
 type SMSRequest struct {
-	Username   string       `json:"username"`
-	Password   string       `json:"password"`
-	SourceAddr string       `json:"source_addr"`
-	ValidFor   string       `json:"valid_for"`
-	SendAt     string       `json:"send_at"`
-	CustomID   string       `json:"custom_id"`
-	Datacoding string       `json:"datacoding"`
-	Messages   []SMSMessage `json:"messages"`
+	Username   string              `json:"username"`
+	Password   string              `json:"password"`
+	SourceAddr string              `json:"source_addr"`
+	ValidFor   string              `json:"valid_for"`
+	SendAt     string              `json:"send_at"`
+	CustomID   string              `json:"custom_id"`
+	Datacoding string              `json:"datacoding"`
+	Messages   []providers.Message `json:"messages"`
 }
 
 type BuyMeACoffeeWebhook struct {
@@ -127,6 +124,10 @@ func main() {
 	}
 	defer db.Close()
 
+	// Initialize SMS provider manager
+	smsManager = providers.NewManager()
+	smsManager.RegisterProvider(providers.NewVerimorProvider())
+
 	app := fiber.New()
 
 	// Add root endpoint with documentation
@@ -142,7 +143,12 @@ Usage:
 It always returns a base64 encoded response. 
 Send the URI (including the https://) as SMS and get markdown in base64
 
-send "twitter user <username>" to get the last 5 tweets of the user in base64
+Available SMS commands:
+- URL (https://...) - Convert URI to Markdown
+- "twitter user <username>" - Get the last 5 tweets of the user
+- "websearch <query>" - Search the web via DuckDuckGo
+- "wiki <2charlangcode> <query>" - Get Wikipedia article summary in specified language
+- "weather <location>" - Get weather forecast for a location
 
 Rate Limits:
 - Maximum 5 messages per hour per phone number
@@ -150,6 +156,9 @@ Rate Limits:
 HTTP Endpoints (add b64=true parameter for base64 response):
 - /uri2md?uri=<uri>[&b64=true] -> Convert URI to Markdown
 - /twitter?user=<user>[&b64=true] -> Get last 5 tweets of a user
+- /ddg?q=<query>[&b64=true] -> Search the web via DuckDuckGo
+- /wiki?lang=<2charlangcode>&q=<query>[&b64=true] -> Get Wikipedia article summary
+- /weather?loc=<location> -> Get weather forecast (sent without base64 encoding)
 
 support and get more rate limit: https://buymeacoffee.com/ooguz`
 		return c.SendString(doc)
@@ -235,6 +244,69 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 		return c.SendStatus(200)
 	})
 
+	// Add DuckDuckGo search endpoint
+	app.Get("/ddg", func(c *fiber.Ctx) error {
+		query := c.Query("q")
+		if query == "" {
+			return c.Status(400).SendString("Missing q parameter")
+		}
+
+		results, err := fetchDuckDuckGoResults(query)
+		if err != nil {
+			return c.Status(500).SendString(fmt.Sprintf("Error fetching search results: %v", err))
+		}
+
+		// Check if base64 encoding is requested
+		if c.Query("b64") == "true" {
+			encoded := base64.StdEncoding.EncodeToString([]byte(results))
+			return c.SendString(encoded)
+		}
+
+		return c.SendString(results)
+	})
+
+	// Add Wikipedia summary endpoint
+	app.Get("/wiki", func(c *fiber.Ctx) error {
+		query := c.Query("q")
+		if query == "" {
+			return c.Status(400).SendString("Missing q parameter")
+		}
+
+		langCode := c.Query("lang")
+		if langCode == "" {
+			langCode = "en" // Default to English if no language specified
+		}
+
+		summary, err := fetchWikipediaSummary(query, langCode)
+		if err != nil {
+			return c.Status(500).SendString(fmt.Sprintf("Error fetching Wikipedia summary: %v", err))
+		}
+
+		// Check if base64 encoding is requested
+		if c.Query("b64") == "true" {
+			encoded := base64.StdEncoding.EncodeToString([]byte(summary))
+			return c.SendString(encoded)
+		}
+
+		return c.SendString(summary)
+	})
+
+	// Add Weather forecast endpoint
+	app.Get("/weather", func(c *fiber.Ctx) error {
+		location := c.Query("loc")
+		if location == "" {
+			return c.Status(400).SendString("Missing loc parameter")
+		}
+
+		forecast, err := fetchWeatherForecast(location)
+		if err != nil {
+			return c.Status(500).SendString(fmt.Sprintf("Error fetching weather forecast: %v", err))
+		}
+
+		// Weather is sent as is, without base64 encoding
+		return c.SendString(forecast)
+	})
+
 	// Add test endpoint that echoes back the SMS payload
 	app.Post("/api/test", func(c *fiber.Ctx) error {
 		// Deny access in production
@@ -252,7 +324,7 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 		fmt.Printf("Test endpoint received payload:\n%s\n", string(receivedJSON))
 
 		// Process the payload and create response
-		var response []SMSMessage
+		var response []providers.Message
 		for _, sms := range payload {
 			content := strings.TrimSpace(sms.Content)
 
@@ -269,7 +341,7 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 
 				// Create response messages
 				for i, encoded := range encodedParts {
-					response = append(response, SMSMessage{
+					response = append(response, providers.Message{
 						Msg:  encoded,
 						Dest: sms.SourceAddr,
 						ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
@@ -292,12 +364,83 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 
 				// Create response messages
 				for i, encoded := range encodedParts {
-					response = append(response, SMSMessage{
+					response = append(response, providers.Message{
 						Msg:  encoded,
 						Dest: sms.SourceAddr,
 						ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
 					})
 				}
+				continue
+			}
+
+			// Check if content matches "websearch <query>"
+			if strings.HasPrefix(strings.ToLower(content), "websearch ") {
+				query := strings.TrimSpace(strings.TrimPrefix(content, "websearch"))
+				results, err := fetchDuckDuckGoResults(query)
+				if err != nil {
+					fmt.Println("Error fetching search results:", err)
+					continue
+				}
+
+				// Split and encode the message
+				encodedParts := splitAndEncodeMessage(results, 500)
+
+				// Create response messages
+				for i, encoded := range encodedParts {
+					response = append(response, providers.Message{
+						Msg:  encoded,
+						Dest: sms.SourceAddr,
+						ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
+					})
+				}
+				continue
+			}
+
+			// Check if content matches "wiki <lang> <query>"
+			if strings.HasPrefix(strings.ToLower(content), "wiki ") {
+				parts := strings.SplitN(strings.TrimPrefix(content, "wiki "), " ", 2)
+				if len(parts) != 2 {
+					continue
+				}
+
+				langCode := strings.TrimSpace(parts[0])
+				query := strings.TrimSpace(parts[1])
+
+				summary, err := fetchWikipediaSummary(query, langCode)
+				if err != nil {
+					fmt.Println("Error fetching Wikipedia summary:", err)
+					continue
+				}
+
+				// Split and encode the message
+				encodedParts := splitAndEncodeMessage(summary, 500)
+
+				// Create response messages
+				for i, encoded := range encodedParts {
+					response = append(response, providers.Message{
+						Msg:  encoded,
+						Dest: sms.SourceAddr,
+						ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
+					})
+				}
+				continue
+			}
+
+			// Check if content matches "weather <location>"
+			if strings.HasPrefix(strings.ToLower(content), "weather ") {
+				location := strings.TrimSpace(strings.TrimPrefix(content, "weather"))
+				forecast, err := fetchWeatherForecast(location)
+				if err != nil {
+					fmt.Println("Error fetching weather forecast:", err)
+					continue
+				}
+
+				// Weather is sent without encoding
+				response = append(response, providers.Message{
+					Msg:  forecast,
+					Dest: sms.SourceAddr,
+					ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), 0),
+				})
 				continue
 			}
 		}
@@ -344,7 +487,7 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 				confirmationMsg := "Your subscription has been activated. You now have a limit of 20 messages per hour."
 				encodedParts := splitAndEncodeMessage(confirmationMsg, 500)
 				for i, encoded := range encodedParts {
-					smsMessage := []SMSMessage{
+					smsMessage := []providers.Message{
 						{
 							Msg:  encoded,
 							Dest: sms.SourceAddr,
@@ -372,7 +515,7 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 
 				// Send SMS with rate limit notification
 				for i, encoded := range encodedParts {
-					smsMessage := []SMSMessage{
+					smsMessage := []providers.Message{
 						{
 							Msg:  encoded,
 							Dest: sms.SourceAddr,
@@ -399,7 +542,7 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 
 				// Send SMS with markdown content
 				for i, encoded := range encodedParts {
-					smsMessage := []SMSMessage{
+					smsMessage := []providers.Message{
 						{
 							Msg:  encoded,
 							Dest: sms.SourceAddr,
@@ -427,7 +570,7 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 
 				// Send SMS with tweets content
 				for i, encoded := range encodedParts {
-					smsMessage := []SMSMessage{
+					smsMessage := []providers.Message{
 						{
 							Msg:  encoded,
 							Dest: sms.SourceAddr,
@@ -437,6 +580,92 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 					if err := sendSMS(smsMessage); err != nil {
 						fmt.Println("Error sending SMS:", err)
 					}
+				}
+				continue
+			}
+
+			// Check if content matches "websearch <query>"
+			if strings.HasPrefix(strings.ToLower(content), "websearch ") {
+				query := strings.TrimSpace(strings.TrimPrefix(content, "websearch"))
+				results, err := fetchDuckDuckGoResults(query)
+				if err != nil {
+					fmt.Println("Error fetching search results:", err)
+					continue
+				}
+
+				// Split and encode the message
+				encodedParts := splitAndEncodeMessage(results, 500)
+
+				// Send SMS with search results
+				for i, encoded := range encodedParts {
+					smsMessage := []providers.Message{
+						{
+							Msg:  encoded,
+							Dest: sms.SourceAddr,
+							ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
+						},
+					}
+					if err := sendSMS(smsMessage); err != nil {
+						fmt.Println("Error sending SMS:", err)
+					}
+				}
+				continue
+			}
+
+			// Check if content matches "wiki <lang> <query>"
+			if strings.HasPrefix(strings.ToLower(content), "wiki ") {
+				parts := strings.SplitN(strings.TrimPrefix(content, "wiki "), " ", 2)
+				if len(parts) != 2 {
+					continue
+				}
+
+				langCode := strings.TrimSpace(parts[0])
+				query := strings.TrimSpace(parts[1])
+
+				summary, err := fetchWikipediaSummary(query, langCode)
+				if err != nil {
+					fmt.Println("Error fetching Wikipedia summary:", err)
+					continue
+				}
+
+				// Split and encode the message
+				encodedParts := splitAndEncodeMessage(summary, 500)
+
+				// Send SMS with Wikipedia summary
+				for i, encoded := range encodedParts {
+					smsMessage := []providers.Message{
+						{
+							Msg:  encoded,
+							Dest: sms.SourceAddr,
+							ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
+						},
+					}
+					if err := sendSMS(smsMessage); err != nil {
+						fmt.Println("Error sending SMS:", err)
+					}
+				}
+				continue
+			}
+
+			// Check if content matches "weather <location>"
+			if strings.HasPrefix(strings.ToLower(content), "weather ") {
+				location := strings.TrimSpace(strings.TrimPrefix(content, "weather"))
+				forecast, err := fetchWeatherForecast(location)
+				if err != nil {
+					fmt.Println("Error fetching weather forecast:", err)
+					continue
+				}
+
+				// Weather is sent without encoding
+				smsMessage := []providers.Message{
+					{
+						Msg:  forecast,
+						Dest: sms.SourceAddr,
+						ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), 0),
+					},
+				}
+				if err := sendSMS(smsMessage); err != nil {
+					fmt.Println("Error sending SMS:", err)
 				}
 				continue
 			}
@@ -459,7 +688,7 @@ func fetchMarkdown(url string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	markdown, err := ioutil.ReadAll(resp.Body)
+	markdown, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -474,7 +703,7 @@ func fetchTweets(username string, count int) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -587,71 +816,6 @@ func splitAndEncodeMessage(message string, maxLength int) []string {
 	return encodedParts
 }
 
-func sendSMS(messages []SMSMessage) error {
-	// Split long messages before encoding
-	var allMessages []SMSMessage
-	for _, msg := range messages {
-		// Split the message if it contains a header
-		if strings.Contains(msg.Msg, "|") {
-			// Message already has a header, use it as is
-			allMessages = append(allMessages, msg)
-			continue
-		}
-
-		// Decode base64 message
-		decoded, err := base64.StdEncoding.DecodeString(msg.Msg)
-		if err != nil {
-			return fmt.Errorf("error decoding base64 message: %v", err)
-		}
-
-		// Split the decoded message
-		parts := splitMessage(string(decoded), 500)
-
-		// Encode each part and create new messages
-		for i, part := range parts {
-			encoded := base64.StdEncoding.EncodeToString([]byte(part))
-			allMessages = append(allMessages, SMSMessage{
-				Msg:  encoded,
-				Dest: msg.Dest,
-				ID:   fmt.Sprintf("%s_%d", msg.ID, i),
-			})
-		}
-	}
-
-	smsRequest := SMSRequest{
-		Username:   os.Getenv("SMS_USERNAME"),
-		Password:   os.Getenv("SMS_PASSWORD"),
-		SourceAddr: os.Getenv("SMS_SOURCE_ADDR"),
-		ValidFor:   "48:00",
-		Datacoding: "0",
-		Messages:   allMessages,
-	}
-
-	jsonData, err := json.Marshal(smsRequest)
-	if err != nil {
-		return fmt.Errorf("error marshaling SMS request: %v", err)
-	}
-
-	// Log sent payload
-	fmt.Printf("Sending SMS payload:\n%s\n", string(jsonData))
-
-	resp, err := httpClient.Post(
-		"https://sms.verimor.com.tr/v2/send.json",
-		"application/json",
-		strings.NewReader(string(jsonData)),
-	)
-	if err != nil {
-		return fmt.Errorf("error sending SMS: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Log response
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Printf("SMS API Response (Status: %d):\n%s\n", resp.StatusCode, string(body))
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("SMS API error: %s", string(body))
-	}
-
-	return nil
+func sendSMS(messages []providers.Message) error {
+	return smsManager.SendMessage(messages)
 }
