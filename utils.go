@@ -210,7 +210,7 @@ func fetchWeatherForecast(location string) (string, error) {
 
 	// Format string for wttr.in - shows location, condition, temperature,
 	// wind, humidity, moon phase, sunrise and sunset
-	format := url.QueryEscape("%l:\n%c%t\n%w+%h+-+%m\nsr+%S\nss+%s\n")
+	format := url.QueryEscape("%l:\n%c%t\n%w %h - %m\nsr %S\nss %s\n")
 
 	// Create the URL for the wttr.in API
 	weatherURL := fmt.Sprintf("https://wttr.in/%s?format=%s",
@@ -234,6 +234,10 @@ func fetchWeatherForecast(location string) (string, error) {
 		return "", fmt.Errorf("error reading weather response: %v", err)
 	}
 
-	// Return the weather data as is
-	return string(body), nil
+	// Convert to string and replace sr and ss with sunrise and sunset emojis
+	weatherData := string(body)
+	weatherData = strings.ReplaceAll(weatherData, "sr", "🌅")
+	weatherData = strings.ReplaceAll(weatherData, "ss", "🌇")
+
+	return weatherData, nil
 }

@@ -43,12 +43,37 @@ type SMSRequest struct {
 
 // Send sends one or more SMS messages using Verimor's API
 func (v *VerimorProvider) Send(messages []Message) error {
+	username := os.Getenv("SMS_USERNAME")
+	password := os.Getenv("SMS_PASSWORD")
+	sourceAddr := os.Getenv("SMS_SOURCE_ADDR")
+
+	// Validate required credentials
+	if username == "" || password == "" || sourceAddr == "" {
+		return fmt.Errorf("missing required SMS credentials (SMS_USERNAME, SMS_PASSWORD, or SMS_SOURCE_ADDR)")
+	}
+
+	// Validate messages
+	if len(messages) == 0 {
+		return fmt.Errorf("no messages to send")
+	}
+
+	for _, msg := range messages {
+		if msg.Dest == "" {
+			return fmt.Errorf("destination address cannot be empty")
+		}
+	}
+
+	datacoding := "0"
+	if messages[0].Msg[0] != 'G' {
+		datacoding = "2"
+	}
+
 	smsRequest := SMSRequest{
-		Username:   os.Getenv("SMS_USERNAME"),
-		Password:   os.Getenv("SMS_PASSWORD"),
-		SourceAddr: os.Getenv("SMS_SOURCE_ADDR"),
+		Username:   username,
+		Password:   password,
+		SourceAddr: sourceAddr,
 		ValidFor:   "48:00",
-		Datacoding: "0",
+		Datacoding: datacoding,
 		Messages:   messages,
 	}
 

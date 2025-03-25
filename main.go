@@ -128,39 +128,100 @@ func main() {
 	smsManager = providers.NewManager()
 	smsManager.RegisterProvider(providers.NewVerimorProvider())
 
-	app := fiber.New()
+	app := fiber.New(
+		fiber.Config{
+			AppName:      "neo146 - smsgw",
+			Prefork:      true,
+			ServerHeader: "neo146-smsgw",
+		},
+	)
 
 	// Add root endpoint with documentation
 	app.Get("/", func(c *fiber.Ctx) error {
 		doc := `neo146 - smsgw
-=====
+==============
 
-This SMS gateway provides a super minimal (and experimental!) HTTP-SMS gateway,
-can be considered as an emergency connection method similar to dial-up.
+neo146 provides a minimal HTTP-SMS gateway that serves as an emergency network
+connection method inspired by dial-up, allowing you to access content via SMS.
 
-Usage:
+The name "neo146" comes from the Turkish historic public dial-up service, which
+operated on dial number 146. 
 
-It always returns a base64 encoded response. 
-Send the URI (including the https://) as SMS and get markdown in base64
+The service is free, but running it costs about 20 EUR per month, and also ~3
+cents per message for the SMS gateway. For a better experience and support the
+service, please consider subscribing.
 
-Available SMS commands:
-- URL (https://...) - Convert URI to Markdown
-- "twitter user <username>" - Get the last 5 tweets of the user
-- "websearch <query>" - Search the web via DuckDuckGo
-- "wiki <2charlangcode> <query>" - Get Wikipedia article summary in specified language
+SMS responses are base64 encoded for using less SMS credits. Multiple messages
+are used to send longer responses, the sequence of messages is indicated in the
+response as "GW<number>|" prefix.
+
+HTTP responses are not encoded by default, but can be requested with b64=true
+parameter.
+
+Available SMS Commands:
+- URL (https://...) - Fetch and convert any webpage to Markdown format
+- "twitter user <username>" - Get the last 5 tweets from a Twitter user
+- "websearch <query>" - Search the web using DuckDuckGo
+- "wiki <2charlangcode> <query>" - Get Wikipedia article summary
 - "weather <location>" - Get weather forecast for a location
 
+HTTP Endpoints:
+- /uri2md?uri=<uri>[&b64=true] - Convert URI to Markdown
+- /twitter?user=<user>[&b64=true] - Get last 5 tweets of a user
+- /ddg?q=<query>[&b64=true] - Search the web via DuckDuckGo
+- /wiki?lang=<2charlangcode>&q=<query>[&b64=true] - Get Wikipedia article summ.
+- /weather?loc=<location> - Get weather forecast
+
 Rate Limits:
-- Maximum 5 messages per hour per phone number
+- 5 messages per hour per phone number
+- Subscribe to support the service and get 20 messages/hour per phone number
 
-HTTP Endpoints (add b64=true parameter for base64 response):
-- /uri2md?uri=<uri>[&b64=true] -> Convert URI to Markdown
-- /twitter?user=<user>[&b64=true] -> Get last 5 tweets of a user
-- /ddg?q=<query>[&b64=true] -> Search the web via DuckDuckGo
-- /wiki?lang=<2charlangcode>&q=<query>[&b64=true] -> Get Wikipedia article summary
-- /weather?loc=<location> -> Get weather forecast (sent without base64 encoding)
+Subscription:
+- Get higher rate limits by subscribing via: <https://buymeacoffee.com/ooguz>
+- After subscribing, text "subscribe <your-email>" to link your phone number
+- All your contribution will be used to maintain the service, rest will be 
+donated to Free Software Association in Turkey (Özgür Yazılım Derneği) 
+<https://oyd.org.tr>
+- Running this service costs about 20 EUR per month, and also ~3 cents/message
+for the SMS gateway. For a better experience and support the service, please 
+consider subscribing.
 
-support and get more rate limit: https://buymeacoffee.com/ooguz`
+Support:
+- For more information or support, neo146 {at} riseup {dot} net
+- E-mail is preferred for requests, but you can also contact via Twitter @ooguz
+- Subscribe to our neo146-users mailing list to get updates and support:
+<https://lists.riseup.net/www/subscribe/neo146-users>
+
+Thanks:
+- wttr.in for the weather data - <https://wttr.in>
+- duckduckgo lite for the search engine - <https://lite.duckduckgo.com/lite>
+- urltomarkdown for the md conversion - <https://github.com/macsplit/urltomarkdown>
+- nitter project for the Twitter API - <https://github.com/zedeus/nitter>
+- Özgür Yazılım Derneği for the support - <https://oyd.org.tr>
+
+
+This gateway is free software, licensed under GNU AGPL v3 or later. 
+Source code is available at:
+https://github.com/ooguz/neo146
+
+--------------------------------
+
+Warning:
+- This service is provided as-is, without any warranty. Use at your own risk.
+- The service is not responsible for any content accessed via the gateway.
+- Please be aware that the SMS messages are not encrypted, so please do not use
+  it for sensitive content. The provider and government may read your messages.
+- The service is not affiliated with any organization. It is a personal project.
+- This is not a commercial service or ISP. It is a free service provided by an
+  individual. Subscribing is not meant to be a commercial transaction, but a
+  way to support the service. Please do not abuse the service by sending spam
+  or other malicious content.
+- The service is not responsible for any content accessed via the gateway.
+- Please be aware that the SMS messages are not encrypted, so please do not use
+  it for sensitive content. The provider and government may read your messages.
+- The service is not affiliated with any organization. It is a personal project.
+- This is not a commercial service or ISP. It is a free service provided by an
+  individual.`
 		return c.SendString(doc)
 	})
 
@@ -509,22 +570,22 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 			}
 
 			if !allowed {
-				// Send rate limit notification
-				rateLimitMsg := "You have reached the rate limit of 5 messages per hour. Please try again later or subscribe to the service. https://buymeacoffee.com/ooguz"
-				encodedParts := splitAndEncodeMessage(rateLimitMsg, 500)
+				// Send rate limit notification with source address
+				if sms.SourceAddr == "" {
+					fmt.Println("Error: source address is empty for rate limit notification")
+					continue
+				}
 
-				// Send SMS with rate limit notification
-				for i, encoded := range encodedParts {
-					smsMessage := []providers.Message{
-						{
-							Msg:  encoded,
-							Dest: sms.SourceAddr,
-							ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), i),
-						},
-					}
-					if err := sendSMS(smsMessage); err != nil {
-						fmt.Printf("Error sending rate limit notification: %v\n", err)
-					}
+				rateLimitMsg := "!: You have reached the rate limit of 5 messages per hour. Please try again later or subscribe to the service. https://buymeacoffee.com/ooguz"
+				smsMessage := []providers.Message{
+					{
+						Msg:  rateLimitMsg,
+						Dest: sms.SourceAddr,
+						ID:   fmt.Sprintf("%d_%d", time.Now().Unix(), 0),
+					},
+				}
+				if err := sendSMS(smsMessage); err != nil {
+					fmt.Printf("Error sending rate limit notification: %v\n", err)
 				}
 				continue
 			}
@@ -671,6 +732,39 @@ support and get more rate limit: https://buymeacoffee.com/ooguz`
 			}
 		}
 		return c.SendStatus(204)
+	})
+
+	// Add test endpoint for subscription
+	app.Post("/api/test/subscribe", func(c *fiber.Ctx) error {
+		// Deny access in production
+		if currentEnv == EnvProd {
+			return c.Status(403).SendString("Test endpoint is not available in production environment")
+		}
+
+		type SubscriptionRequest struct {
+			Email string `json:"email"`
+		}
+
+		var req SubscriptionRequest
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).SendString(err.Error())
+		}
+
+		if req.Email == "" {
+			return c.Status(400).SendString("Email is required")
+		}
+
+		// Save subscription with active status
+		if err := saveSubscription(
+			fmt.Sprintf("test_%d", time.Now().Unix()),
+			req.Email,
+			"active",
+			time.Now().Add(30*24*time.Hour), // 30 days subscription
+		); err != nil {
+			return c.Status(500).SendString(fmt.Sprintf("Error saving subscription: %v", err))
+		}
+
+		return c.SendString("Subscription added successfully")
 	})
 
 	app.Listen(":8080")
