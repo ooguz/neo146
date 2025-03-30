@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +35,542 @@ const (
 
 var currentEnv Environment
 var smsManager *providers.Manager
+
+// OpenAPIDocument represents the OpenAPI specification
+var openAPISpec = `{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "neo146 HTTP API",
+    "description": "neo146 provides a minimal HTTP-SMS gateway that serves as an emergency network connection method inspired by dial-up, allowing you to access content via SMS.",
+    "version": "1.0.0",
+    "contact": {
+      "email": "neo146@riseup.net"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://neo146.net",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Development server"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Service documentation",
+        "description": "Returns basic documentation about the neo146 service",
+        "responses": {
+          "200": {
+            "description": "Documentation text",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/uri2md": {
+      "get": {
+        "summary": "Convert URI to Markdown",
+        "description": "Fetches the content at the given URI and converts it to Markdown format",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "uri",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "URI to fetch and convert to Markdown"
+          },
+          {
+            "in": "query",
+            "name": "b64",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Whether to base64 encode the response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Markdown content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/twitter": {
+      "get": {
+        "summary": "Get tweets from user",
+        "description": "Fetches the last 5 tweets from a Twitter user",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Twitter username"
+          },
+          {
+            "in": "query",
+            "name": "b64",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Whether to base64 encode the response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tweets content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ddg": {
+      "get": {
+        "summary": "Search with DuckDuckGo",
+        "description": "Search the web using DuckDuckGo",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search query"
+          },
+          {
+            "in": "query",
+            "name": "b64",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Whether to base64 encode the response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wiki": {
+      "get": {
+        "summary": "Get Wikipedia summary",
+        "description": "Get a summary of a Wikipedia article",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search query"
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "en"
+            },
+            "description": "Language code (2 characters)"
+          },
+          {
+            "in": "query",
+            "name": "b64",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Whether to base64 encode the response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Wikipedia summary",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/weather": {
+      "get": {
+        "summary": "Get weather forecast",
+        "description": "Get weather forecast for a location",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "loc",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Location"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Weather forecast",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing parameter",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhook/buymeacoffee": {
+      "post": {
+        "summary": "Buy Me a Coffee webhook",
+        "description": "Webhook endpoint for Buy Me a Coffee subscription events",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuyMeACoffeeWebhook"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/inbound": {
+      "post": {
+        "summary": "Inbound SMS endpoint",
+        "description": "Endpoint for receiving inbound SMS messages",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SMSPayload"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Success - no content"
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        }
+      }
+    },
+    "/api/docs": {
+      "get": {
+        "summary": "OpenAPI documentation",
+        "description": "Returns the OpenAPI specification for this API",
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SMSPayload": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "source_addr": {
+            "type": "string",
+            "description": "Source phone number"
+          },
+          "destination_addr": {
+            "type": "string",
+            "description": "Destination phone number"
+          },
+          "keyword": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Message content"
+          },
+          "received_at": {
+            "type": "string"
+          }
+        }
+      },
+      "BuyMeACoffeeWebhook": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "live_mode": {
+            "type": "boolean"
+          },
+          "attempt": {
+            "type": "integer"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "event_id": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "amount": {
+                "type": "number",
+                "format": "float"
+              },
+              "object": {
+                "type": "string"
+              },
+              "paused": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "canceled": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "psp_id": {
+                "type": "string"
+              },
+              "duration_type": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "canceled_at": {
+                "type": ["integer", "null"],
+                "format": "int64"
+              },
+              "note_hidden": {
+                "type": "boolean"
+              },
+              "support_note": {
+                "type": ["string", "null"]
+              },
+              "supporter_name": {
+                "type": "string"
+              },
+              "supporter_id": {
+                "type": "integer"
+              },
+              "supporter_email": {
+                "type": "string"
+              },
+              "current_period_end": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "current_period_start": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "supporter_feedback": {
+                "type": ["string", "null"]
+              },
+              "cancel_at_period_end": {
+                "type": ["string", "null"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
 
 type SMSPayload struct {
 	MessageID       int    `json:"message_id"`
@@ -104,6 +642,28 @@ type Item struct {
 	PubDate     string `xml:"pubDate"`
 }
 
+// PayPalIPN represents the PayPal IPN notification structure
+type PayPalIPN struct {
+	PaymentStatus    string  `json:"payment_status"`
+	PaymentType      string  `json:"payment_type"`
+	PaymentDate      string  `json:"payment_date"`
+	PaymentGross     float64 `json:"mc_gross,string"`
+	PaymentFee       float64 `json:"mc_fee,string"`
+	Currency         string  `json:"mc_currency"`
+	PayerEmail       string  `json:"payer_email"`
+	PayerID          string  `json:"payer_id"`
+	SubscriptionID   string  `json:"subscr_id"`
+	SubscriptionDate string  `json:"subscr_date"`
+	SubscriptionEnd  string  `json:"subscr_end"`
+	Custom           string  `json:"custom"`
+	IPNType          string  `json:"txn_type"`
+}
+
+// PayPalIPNResponse represents the response we send back to PayPal
+type PayPalIPNResponse struct {
+	Status string
+}
+
 func main() {
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
@@ -135,6 +695,53 @@ func main() {
 			ServerHeader: "neo146-smsgw",
 		},
 	)
+
+	// Add OpenAPI documentation endpoint
+	app.Get("/api/docs", func(c *fiber.Ctx) error {
+		return c.Status(200).Type("application/json").SendString(openAPISpec)
+	})
+
+	// Add OpenAPI UI endpoint
+	app.Get("/api/docs/ui", func(c *fiber.Ctx) error {
+		html := `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>neo146 API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui.css" />
+    <style>
+        html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+        *, *:before, *:after { box-sizing: inherit; }
+        body { margin: 0; background: #fafafa; }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+
+    <script src="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui-bundle.js" charset="UTF-8"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@4.5.0/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+    <script>
+    window.onload = function() {
+        const ui = SwaggerUIBundle({
+            url: "/api/docs",
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIStandalonePreset
+            ],
+            layout: "StandaloneLayout",
+            supportedSubmitMethods: []
+        });
+        window.ui = ui;
+    };
+    </script>
+</body>
+</html>
+`
+		return c.Status(200).Type("text/html").SendString(html)
+	})
 
 	// Add root endpoint with documentation
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -366,6 +973,80 @@ Warning:
 
 		// Weather is sent as is, without base64 encoding
 		return c.SendString(forecast)
+	})
+
+	// Add PayPal IPN endpoint
+	app.Post("/webhook/paypal", func(c *fiber.Ctx) error {
+		// Get the raw body for verification
+		body := c.Body()
+
+		// Parse the form data
+		form, err := c.MultipartForm()
+		if err != nil {
+			return c.Status(400).SendString("Invalid form data")
+		}
+
+		// Create IPN struct
+		ipn := &PayPalIPN{
+			PaymentStatus:    form.Value["payment_status"][0],
+			PaymentType:      form.Value["payment_type"][0],
+			PaymentDate:      form.Value["payment_date"][0],
+			PaymentGross:     parseFloat(form.Value["mc_gross"][0]),
+			PaymentFee:       parseFloat(form.Value["mc_fee"][0]),
+			Currency:         form.Value["mc_currency"][0],
+			PayerEmail:       form.Value["payer_email"][0],
+			PayerID:          form.Value["payer_id"][0],
+			SubscriptionID:   form.Value["subscr_id"][0],
+			SubscriptionDate: form.Value["subscr_date"][0],
+			SubscriptionEnd:  form.Value["subscr_end"][0],
+			Custom:           form.Value["custom"][0],
+			IPNType:          form.Value["txn_type"][0],
+		}
+
+		// Verify the IPN with PayPal
+		if err := verifyPayPalIPN(body); err != nil {
+			fmt.Printf("Error verifying PayPal IPN: %v\n", err)
+			return c.Status(400).SendString("Invalid IPN")
+		}
+
+		// Handle different IPN types
+		switch ipn.IPNType {
+		case "subscr_signup":
+			// New subscription
+			if err := saveSubscription(
+				ipn.SubscriptionID,
+				ipn.PayerEmail,
+				"active",
+				parsePayPalDate(ipn.SubscriptionEnd),
+			); err != nil {
+				fmt.Printf("Error saving subscription: %v\n", err)
+				return c.Status(500).SendString("Error saving subscription")
+			}
+
+		case "subscr_payment":
+			// Subscription payment received
+			if err := updateSubscriptionStatus(ipn.SubscriptionID, "active"); err != nil {
+				fmt.Printf("Error updating subscription status: %v\n", err)
+				return c.Status(500).SendString("Error updating subscription")
+			}
+
+		case "subscr_cancel":
+			// Subscription cancelled
+			if err := updateSubscriptionStatus(ipn.SubscriptionID, "cancelled"); err != nil {
+				fmt.Printf("Error updating subscription status: %v\n", err)
+				return c.Status(500).SendString("Error updating subscription")
+			}
+
+		case "subscr_eot":
+			// Subscription ended
+			if err := updateSubscriptionStatus(ipn.SubscriptionID, "expired"); err != nil {
+				fmt.Printf("Error updating subscription status: %v\n", err)
+				return c.Status(500).SendString("Error updating subscription")
+			}
+		}
+
+		// Send success response back to PayPal
+		return c.SendString("OK")
 	})
 
 	// Add test endpoint that echoes back the SMS payload
@@ -912,4 +1593,57 @@ func splitAndEncodeMessage(message string, maxLength int) []string {
 
 func sendSMS(messages []providers.Message) error {
 	return smsManager.SendMessage(messages)
+}
+
+// Helper function to parse float from string
+func parseFloat(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
+}
+
+// Helper function to parse PayPal date format
+func parsePayPalDate(dateStr string) time.Time {
+	// PayPal dates are in format: HH:MM:SS MMM DD, YYYY PST
+	// Example: 15:30:45 Jan 18, 2009 PST
+	loc, _ := time.LoadLocation("America/Los_Angeles")
+	t, _ := time.ParseInLocation("15:04:05 Jan 02, 2006 MST", dateStr, loc)
+	return t
+}
+
+// Helper function to verify PayPal IPN
+func verifyPayPalIPN(body []byte) error {
+	// Create a new request to PayPal
+	req, err := http.NewRequest("POST", "https://ipnpb.paypal.com/cgi-bin/webscr", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+
+	// Add the cmd=_notify-validate parameter
+	q := req.URL.Query()
+	q.Add("cmd", "_notify-validate")
+	req.URL.RawQuery = q.Encode()
+
+	// Set the content type
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Read the response
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Check if the response is "VERIFIED"
+	if string(body) != "VERIFIED" {
+		return fmt.Errorf("IPN not verified by PayPal")
+	}
+
+	return nil
 }
