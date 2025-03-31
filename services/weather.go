@@ -23,9 +23,11 @@ func NewWeatherService(httpClient *http.Client) *WeatherService {
 func (s *WeatherService) FetchWeatherForecast(location string) (string, error) {
 	// Format location for wttr.in
 	encodedLocation := url.QueryEscape(location)
+	format := url.QueryEscape("%l:\n%c%t\n%w %h - %m\nsr %S\nss %s\n")
 
 	// Call wttr.in with format=3 for a compact forecast
-	wttrURL := fmt.Sprintf("https://wttr.in/%s?format=3", encodedLocation)
+	wttrURL := fmt.Sprintf("https://wttr.in/%s?format=%s",
+		url.PathEscape(encodedLocation), format)
 
 	resp, err := s.httpClient.Get(wttrURL)
 	if err != nil {
