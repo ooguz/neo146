@@ -46,7 +46,7 @@ HTTP responses are not encoded by default, but can be requested with `b64=true` 
 *   ~~Add weather data~~ _(done!)_
 *   Android app and browser _(in progress)_
 *   Build up a portal and put actual content frequently similar to old ISPs
-*   Add numbers for other countries
+*   Add other SMS providers and phone numbers especially for other countries
 *   Implement SMS encryption
 *   Providing a real public dial-up service for emergency use
 *   Bell 202-or-similar AFSK voice modem support
