@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="neo146 - A minimal emergency gateway service providing SMS and Markdown access to internet content">
+    <title>neo146 - connect like it's 1984</title>
+    <style type="text/css">
+        body {
+            margin: 40px auto;
+            max-width: 650px;
+            line-height: 1.6;
+            font-size: 18px;
+            color: #444;
+            padding: 0 10px
+        }
+
+        h1,
+        h2,
+        h3 {
+            line-height: 1.2
+        }
+        
+        .terminal {
+            font-family: monospace;
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        hr {
+            border: 0;
+            height: 1px;
+            background: #ddd;
+            margin: 2em 0;
+        }
+    </style>
+</head>
+
+<body>
+    <header role="banner">
+        <h1>neo146 - connect like it's 1984</h1>
+        <p><em>A plain text version of this page is available at <a href="/index.txt">/index.txt</a></em></p>
+    </header>
+
+    <main role="main">
+        <article>
+            <section aria-labelledby="about">
+                <h2 id="about">About</h2>
+                <p><strong>neo146</strong> provides a minimal (and experimental!) information gateway that serves as an emergency
+                    network connection method inspired by dial-up, allowing you to access content via certain protocols. The current
+                    implementations are HTTP-SMS gateway and HTTP-Markdown gateway.</p>
+
+                <p>The name <strong>"neo146"</strong> comes from the Turkish historic public dial-up service, which operated on dial
+                    number 146. This project is created within a few days to support the protesters during the 19 March 2025
+                    uprising in Turkey, following the arrest of the mayor of Istanbul, Ekrem Imamoglu who is the opposition's
+                    presidential candidate.</p>
+
+                <p>The service is free, but running it costs about 20 EUR per month, and also 5-20 cents per message for the SMS
+                    gateway; please use responsibly. For supporting the service and a better experience, please consider donating
+                    and subscribing.</p>
+
+                <p>SMS responses are base64 encoded for using less SMS credits. Multiple messages are used to send longer responses,
+                    the sequence of messages is indicated in the response as <code>GW&lt;number&gt;|</code> prefix.</p>
+
+                <p>HTTP responses are not encoded by default, but can be requested with <code>b64=true</code> parameter.</p>
+
+                <figure class="terminal" aria-label="Contact phone number">
+                    <pre>+-------------------+
+| +90 850 242 0 146 |
++-------------------+</pre>
+                    <figcaption>Phone number for SMS gateway</figcaption>
+                </figure>
+            </section>
+
+            <section aria-labelledby="sms-commands">
+                <h2 id="sms-commands">Available SMS Commands</h2>
+                <ul>
+                    <li><code>URL (https://...)</code> - Fetch and convert any webpage to Markdown format</li>
+                    <li><code>twitter user &lt;username&gt;</code> - Get the last 5 tweets from a Twitter user</li>
+                    <li><code>websearch &lt;query&gt;</code> - Search the web using DuckDuckGo</li>
+                    <li><code>wiki &lt;2charlangcode&gt; &lt;query&gt;</code> - Get Wikipedia article summary</li>
+                    <li><code>weather &lt;location&gt;</code> - Get weather forecast for a location</li>
+                </ul>
+            </section>
+
+            <section aria-labelledby="http-endpoints">
+                <h2 id="http-endpoints">HTTP Endpoints</h2>
+                <ul>
+                    <li><code>/uri2md?uri=&lt;uri&gt;[&amp;b64=true]</code> - Convert URI to Markdown</li>
+                    <li><code>/twitter?user=&lt;user&gt;[&amp;b64=true]</code> - Get last 5 tweets of a user</li>
+                    <li><code>/ddg?q=&lt;query&gt;[&amp;b64=true]</code> - Search the web via DuckDuckGo</li>
+                    <li><code>/wiki?lang=&lt;2charlangcode&gt;&amp;q=&lt;query&gt;[&amp;b64=true]</code> - Get Wikipedia article
+                        summary</li>
+                    <li><code>/weather?loc=&lt;location&gt;</code> - Get weather forecast</li>
+                </ul>
+            </section>
+
+            <hr>
+
+            <section aria-labelledby="roadmap">
+                <h2 id="roadmap">Roadmap</h2>
+                <ul>
+                    <li><s>Add Wikipedia support</s> (done!)</li>
+                    <li><s>Add weather data</s> (done!)</li>
+                    <li>Android app and browser (in progress)</li>
+                    <li>Build up a portal and put actual content frequently similar to old ISPs</li>
+                    <li>Providing a real public dial-up service for emergency use</li>
+                    <li>Bell 202-or-similar AFSK voice modem support</li>
+                    <li>LoRaWAN support</li>
+                    <li>APRS and HF-APRS mediums</li>
+                    <li>Transmitting pictures through neo146 via SSTV</li>
+                    <li>Satellite Internet to circumvent censorships and infrastructure blocks</li>
+                    <li>Any suggestions from you!</li>
+                </ul>
+            </section>
+
+            <section aria-labelledby="usage-info">
+                <h2 id="usage-info">Usage Information</h2>
+                
+                <div aria-labelledby="rate-limits">
+                    <h3 id="rate-limits">Rate Limits</h3>
+                    <ul>
+                        <li>5 messages per hour per phone number</li>
+                        <li>Subscribe to support the service and get 20 messages/hour per phone number</li>
+                    </ul>
+                </div>
+                
+                <div aria-labelledby="subscription">
+                    <h3 id="subscription">Subscription</h3>
+                    <p>Get higher rate limits by subscribing via: <a
+                            href="https://buymeacoffee.com/ooguz">https://buymeacoffee.com/ooguz</a></p>
+                    <p>After subscribing, text <code>subscribe &lt;your-email&gt;</code> to link your phone number</p>
+                    <p>All your contribution will be used to maintain the service, rest will be donated to Free Software Association in
+                        Turkey (Özgür Yazılım Derneği) <a href="https://oyd.org.tr">https://oyd.org.tr</a></p>
+                </div>
+            </section>
+
+            <section aria-labelledby="donations">
+                <h2 id="donations">Donations</h2>
+                <div>
+                    <h3>Monetary donations</h3>
+                    <ul>
+                        <li><a href="https://buymeacoffee.com/ooguz">Buy Me a Coffee</a></li>
+                        <li><a href="https://paypal.me/ozcanoguz">PayPal</a></li>
+                        <li><form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top">
+                            <input type="hidden" name="cmd" value="_s-xclick" />
+                            <input type="hidden" name="hosted_button_id" value="96CNFA8KVT82Y" />
+                            <input type="hidden" name="currency_code" value="USD" />
+                            <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_subscribe_SM.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Subscribe" />
+                          </form></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3>Hardware and other donations needed</h3>
+                    <p>(please email us)</p>
+                    <ul>
+                        <li>Satellite hardware (VSAT, Starlink, Viasat etc.)</li>
+                        <li>Dial-up modems or telephones (DTMF)</li>
+                        <li>LoRa and LoRaWAN devices</li>
+                        <li>Amateur radio hardware: Radios, antennas, Signalink(-like) devices</li>
+                        <li>VoIP numbers, bulk SMS subscriptions or credits</li>
+                        <li>Servers</li>
+                        <li>Any service credits useful for running the service</li>
+                    </ul>
+                </div>
+            </section>
+
+            <section aria-labelledby="support">
+                <h2 id="support">Support and Contact</h2>
+                <ul>
+                    <li>Email: neo146 [at] riseup [dot] net (preferred)</li>
+                    <li>Twitter: <a href="https://twitter.com/ooguz">@ooguz</a></li>
+                    <li>Mailing list: <a href="https://lists.riseup.net/www/subscribe/neo146-users">neo146-users</a></li>
+                    <li>Follow us on Twitter: <a href="https://twitter.com/neo146net">@neo146net</a></li>
+                    <li>Follow us on Mastodon: <a href="https://chaos.social/@neo146">@neo146@chaos.social</a></li>
+                    <li>Telegram Channel: <a href="https://t.me/neo146net">https://t.me/neo146net</a></li>
+                </ul>
+            </section>
+
+            <section aria-labelledby="thanks">
+                <h2 id="thanks">Thanks</h2>
+                <ul>
+                    <li><a href="https://wttr.in">wttr.in</a> - weather data</li>
+                    <li><a href="https://lite.duckduckgo.com/lite">DuckDuckGo Lite</a> - search engine</li>
+                    <li><a href="https://github.com/macsplit/urltomarkdown">urltomarkdown</a> - markdown conversion</li>
+                    <li><a href="https://github.com/zedeus/nitter">Nitter project</a> - Twitter API</li>
+                    <li><a href="https://oyd.org.tr">Özgür Yazılım Derneği</a> - support</li>
+                </ul>
+            </section>
+        </article>
+    </main>
+
+    <footer role="contentinfo">
+        <p>This gateway is free software, licensed under GNU AGPL v3 or later. <a
+                href="https://github.com/ooguz/neo146">Source code</a></p>
+
+        <hr>
+
+        <section aria-labelledby="warning">
+            <h2 id="warning">Warning</h2>
+            <ul>
+                <li>This service is provided as-is, without any warranty. Use at your own risk.</li>
+                <li>The service is not responsible for any content accessed via the gateway.</li>
+                <li>SMS messages are not encrypted — do not use for sensitive content. Your messages may be read by the provider
+                    or government.</li>
+                <li>This is a personal, non-commercial project. Subscriptions are for support, not business.</li>
+                <li>Please do not abuse the service by sending spam or malicious content.</li>
+                <li>The service is not affiliated with any organization. It is a personal project.</li>
+            </ul>
+        </section>
+    </footer>
+</body>
+
+</html>
