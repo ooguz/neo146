@@ -1,11 +1,15 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 // SearchService handles searching using DuckDuckGo
@@ -22,75 +26,301 @@ func NewSearchService(httpClient *http.Client) *SearchService {
 
 // FetchDuckDuckGoResults fetches search results from DuckDuckGo
 func (s *SearchService) FetchDuckDuckGoResults(query string) (string, error) {
-	url := fmt.Sprintf("https://lite.duckduckgo.com/lite/?q=%s", query)
-	resp, err := s.httpClient.Get(url)
+
+	// Create form data for the POST request
+
+	formData := url.Values{}
+
+	formData.Set("q", query)
+
+	formData.Set("kl", "tr-tr") // TR results
+
+	// DuckDuckGo Lite expects a POST request with form data
+
+	resp, err := s.httpClient.PostForm("https://lite.duckduckgo.com/lite/", formData)
+
 	if err != nil {
-		return "", err
+
+		return "", fmt.Errorf("error fetching DuckDuckGo results: %v", err)
+
 	}
+
 	defer resp.Body.Close()
 
+	// Read the response body
+
 	body, err := io.ReadAll(resp.Body)
+
 	if err != nil {
-		return "", err
+
+		return "", fmt.Errorf("error reading response body: %v", err)
+
 	}
 
-	// Parse the HTML to extract search results
-	results := s.parseSearchResults(string(body))
-	if results == "" {
-		return "No results found", nil
-	}
+	htmlContent := string(body)
 
-	return results, nil
-}
-
-// parseSearchResults parses HTML from DuckDuckGo to extract search results
-func (s *SearchService) parseSearchResults(html string) string {
-	// This is a very basic parser that extracts links and snippets
-	// A better approach would be to use an HTML parser like goquery
-
-	// Extract links
-	linkRegex := regexp.MustCompile(`<a rel="nofollow" href="([^"]+)"[^>]*>([^<]+)</a>`)
-	matches := linkRegex.FindAllStringSubmatch(html, 10) // Limit to 10 results
+	// Extract search results
 
 	var results []string
-	for _, match := range matches {
-		if len(match) >= 3 {
-			url := match[1]
-			title := match[2]
 
-			// Skip ads and irrelevant links
-			if strings.Contains(url, "duckduckgo.com") {
-				continue
+	// Parse the HTML
+
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+
+	if err == nil {
+
+		// Find all links and extract those that point to external sites
+
+		doc.Find("a").Each(func(i int, link *goquery.Selection) {
+
+			href, exists := link.Attr("href")
+
+			// Skip DuckDuckGo internal links
+
+			if exists && !strings.Contains(href, "duckduckgo.com") &&
+
+				strings.HasPrefix(href, "http") && link.Text() != "" {
+
+				title := strings.TrimSpace(link.Text())
+
+				// Skip navigation links like "Next" or very short titles
+
+				if len(title) > 5 &&
+
+					!strings.EqualFold(title, "Next") &&
+
+					!strings.EqualFold(title, "Previous") {
+
+					results = append(results, fmt.Sprintf("# %s\n%s", title, href))
+
+				}
+
 			}
 
-			results = append(results, fmt.Sprintf("- %s\n  %s", title, url))
-		}
+		})
+
 	}
 
-	return strings.Join(results, "\n\n")
+	// Fallback to regex extraction if no results found
+
+	if len(results) == 0 {
+
+		links := extractLinksFromHTML(htmlContent)
+
+		for _, link := range links {
+
+			if !strings.Contains(link, "duckduckgo.com") {
+
+				results = append(results, fmt.Sprintf("# Search Result\n%s", link))
+
+			}
+
+		}
+
+	}
+
+	// Return message if no results found
+
+	if len(results) == 0 {
+
+		return "No search results found. Please try a different query.", nil
+
+	}
+
+	// Limit to 5 results maximum for SMS
+
+	maxResults := 5
+
+	if len(results) > maxResults {
+
+		results = results[:maxResults]
+
+	}
+
+	return strings.Join(results, "\n\n"), nil
+
+}
+func extractLinksFromHTML(html string) []string {
+
+	var links []string
+
+	// First pattern - standard href links
+
+	re1 := regexp.MustCompile(`href=["'](https?://[^"']+)["']`)
+
+	matches1 := re1.FindAllStringSubmatch(html, -1)
+
+	for _, match := range matches1 {
+
+		if len(match) >= 2 && !strings.Contains(match[1], "duckduckgo.com") {
+
+			links = append(links, match[1])
+
+		}
+
+	}
+
+	// Second pattern - looking for URLs in text
+
+	re2 := regexp.MustCompile(`(https?://[^\s"'<>]+)`)
+
+	matches2 := re2.FindAllStringSubmatch(html, -1)
+
+	for _, match := range matches2 {
+
+		if len(match) >= 2 && !strings.Contains(match[1], "duckduckgo.com") {
+
+			// Check if this URL is already in our list
+
+			isDuplicate := false
+
+			for _, existingLink := range links {
+
+				if existingLink == match[1] {
+
+					isDuplicate = true
+
+					break
+
+				}
+
+			}
+
+			if !isDuplicate {
+
+				links = append(links, match[1])
+
+			}
+
+		}
+
+	}
+
+	return links
+
 }
 
 // FetchWikipediaSummary fetches a summary from Wikipedia
 func (s *SearchService) FetchWikipediaSummary(query string, langCode string) (string, error) {
-	url := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&redirects=1&titles=%s",
-		langCode, query)
 
-	resp, err := s.httpClient.Get(url)
-	if err != nil {
-		return "", err
+	// Validate language code
+
+	if len(langCode) != 2 {
+
+		return "", fmt.Errorf("invalid language code: %s (should be 2 characters)", langCode)
+
 	}
+
+	// Capitalize the first letter of the query to match Wikipedia's convention
+
+	capitalizedQuery := query
+
+	if len(query) > 0 {
+
+		capitalizedQuery = strings.ToUpper(query[:1]) + query[1:]
+
+	}
+
+	// Create URL for Wikipedia API
+
+	apiURL := fmt.Sprintf("https://%s.wikipedia.org/api/rest_v1/page/summary/%s",
+
+		langCode, url.PathEscape(capitalizedQuery))
+
+	resp, err := s.httpClient.Get(apiURL)
+
+	if err != nil {
+
+		return "", fmt.Errorf("error fetching Wikipedia summary: %v", err)
+
+	}
+
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	// If the capitalized version fails, try with the original query
+
+	if resp.StatusCode == http.StatusNotFound && capitalizedQuery != query {
+
+		resp.Body.Close() // Close the first response
+
+		// Try with original query
+
+		apiURL = fmt.Sprintf("https://%s.wikipedia.org/api/rest_v1/page/summary/%s",
+
+			langCode, url.PathEscape(query))
+
+		resp, err = s.httpClient.Get(apiURL)
+
+		if err != nil {
+
+			return "", fmt.Errorf("error fetching Wikipedia summary: %v", err)
+
+		}
+
+		defer resp.Body.Close()
+
 	}
 
-	// Parse the JSON response to extract the summary
-	// This is a simplified implementation
-	summary := string(body)
+	if resp.StatusCode == http.StatusNotFound {
 
-	// In a real implementation, you would parse the JSON and extract the actual summary
+		return "", fmt.Errorf("wikipedia article not found for '%s' in language '%s'", query, langCode)
 
-	return summary, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+
+		return "", fmt.Errorf("wikipedia API returned status: %d", resp.StatusCode)
+
+	}
+
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+
+		return "", fmt.Errorf("error reading Wikipedia response: %v", err)
+
+	}
+
+	// Parse JSON response
+
+	var result map[string]interface{}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+
+		return "", fmt.Errorf("error parsing Wikipedia JSON: %v", err)
+
+	}
+
+	// Extract title and extract
+
+	title, _ := result["title"].(string)
+
+	extract, ok := result["extract"].(string)
+
+	if !ok || extract == "" {
+
+		// If no extract, try the description field as fallback
+
+		description, hasDesc := result["description"].(string)
+
+		if hasDesc && description != "" {
+
+			extract = description
+
+		} else {
+
+			return "", fmt.Errorf("no content found for '%s'", query)
+
+		}
+
+	}
+
+	if title == "" {
+
+		title = query // Use the query as title if none is returned
+
+	}
+
+	return fmt.Sprintf("# %s\n\n%s", title, extract), nil
+
 }
