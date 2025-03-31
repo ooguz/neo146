@@ -141,7 +141,7 @@ func FetchWikipediaSummary(query string, langCode string) (string, error) {
 
 	// Create URL for Wikipedia API
 	apiURL := fmt.Sprintf("https://%s.wikipedia.org/api/rest_v1/page/summary/%s",
-		langCode, url.PathEscape(capitalizedQuery))
+		langCode, capitalizedQuery)
 
 	resp, err := httpClient.Get(apiURL)
 	if err != nil {
@@ -155,7 +155,7 @@ func FetchWikipediaSummary(query string, langCode string) (string, error) {
 
 		// Try with original query
 		apiURL = fmt.Sprintf("https://%s.wikipedia.org/api/rest_v1/page/summary/%s",
-			langCode, url.PathEscape(query))
+			langCode, query)
 		resp, err = httpClient.Get(apiURL)
 		if err != nil {
 			return "", fmt.Errorf("error fetching Wikipedia summary: %v", err)

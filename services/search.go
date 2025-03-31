@@ -212,20 +212,19 @@ func (s *SearchService) FetchWikipediaSummary(query string, langCode string) (st
 	}
 
 	// Capitalize the first letter of the query to match Wikipedia's convention
-
 	capitalizedQuery := query
-
 	if len(query) > 0 {
-
-		capitalizedQuery = strings.ToUpper(query[:1]) + query[1:]
-
+		// Ensure we're working with valid UTF-8
+		runes := []rune(query)
+		if len(runes) > 0 {
+			firstChar := string(runes[0])
+			capitalizedQuery = strings.ToUpper(firstChar) + string(runes[1:])
+		}
 	}
 
 	// Create URL for Wikipedia API
-
 	apiURL := fmt.Sprintf("https://%s.wikipedia.org/api/rest_v1/page/summary/%s",
-
-		langCode, url.PathEscape(capitalizedQuery))
+		langCode, capitalizedQuery)
 
 	resp, err := s.httpClient.Get(apiURL)
 
@@ -238,27 +237,16 @@ func (s *SearchService) FetchWikipediaSummary(query string, langCode string) (st
 	defer resp.Body.Close()
 
 	// If the capitalized version fails, try with the original query
-
 	if resp.StatusCode == http.StatusNotFound && capitalizedQuery != query {
-
 		resp.Body.Close() // Close the first response
-
 		// Try with original query
-
 		apiURL = fmt.Sprintf("https://%s.wikipedia.org/api/rest_v1/page/summary/%s",
-
-			langCode, url.PathEscape(query))
-
+			langCode, query)
 		resp, err = s.httpClient.Get(apiURL)
-
 		if err != nil {
-
 			return "", fmt.Errorf("error fetching Wikipedia summary: %v", err)
-
 		}
-
 		defer resp.Body.Close()
-
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
@@ -268,6 +256,7 @@ func (s *SearchService) FetchWikipediaSummary(query string, langCode string) (st
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		fmt.Println(resp.Request.URL)
 
 		return "", fmt.Errorf("wikipedia API returned status: %d", resp.StatusCode)
 
