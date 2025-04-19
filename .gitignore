@@ -2,8 +2,8 @@
 .env.local
 .vscode
 # Project-specific
-smsgw.db
-smsgw
+neo146.db
+neo146
 # Go
 *.exe
 *.exe~
