@@ -2,9 +2,9 @@ package controllers
 
 import (
 	"fmt"
-	"smsgw/models"
-	"smsgw/services"
-	"smsgw/utils"
+	"neo146/models"
+	"neo146/services"
+	"neo146/utils"
 	"time"
 
 	"github.com/gofiber/fiber/v2"

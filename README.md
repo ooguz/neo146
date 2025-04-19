@@ -22,13 +22,23 @@ HTTP responses are not encoded by default, but can be requested with `b64=true` 
 +-------------------+
 ```
 
-## Available SMS Commands
+## Available Commands
 
+### SMS Commands
 *   `URL (https://...)` - Fetch and convert any webpage to Markdown format
 *   `twitter user <username>` - Get the last 5 tweets from a Twitter user
 *   `websearch <query>` - Search the web using DuckDuckGo
 *   `wiki <2charlangcode> <query>` - Get Wikipedia article summary
 *   `weather <location>` - Get weather forecast for a location
+
+### Telegram Bot Commands
+*   `/url <url>` - Convert webpage to Markdown format
+*   `/twitter <username>` - Get last 5 tweets from a Twitter user
+*   `/search <query>` - Search the web using DuckDuckGo
+*   `/wiki <lang> <query>` - Get Wikipedia article summary
+*   `/weather <location>` - Get weather forecast for a location
+*   `/subscribe <email>` - Subscribe to the service
+*   `/help` - Show available commands
 
 ## HTTP Endpoints
 
@@ -38,23 +48,18 @@ HTTP responses are not encoded by default, but can be requested with `b64=true` 
 *   `/wiki?lang=<2charlangcode>&q=<query>[&b64=true]` - Get Wikipedia article summary
 *   `/weather?loc=<location>` - Get weather forecast
 
-- - -
+## Rate Limits
 
-## Roadmap
+*   SMS: 5 messages per hour per phone number
+*   Telegram: 5 messages per hour per user
+*   Subscribe to support the service and get 20 messages/hour
 
-*   ~~Add Wikipedia support~~ _(done!)_
-*   ~~Add weather data~~ _(done!)_
-*   Android app and browser _(in progress)_
-*   Build up a portal and put actual content frequently similar to old ISPs
-*   Add other SMS providers and phone numbers especially for other countries
-*   Implement SMS encryption
-*   Providing a real public dial-up service for emergency use
-*   Bell 202-or-similar AFSK voice modem support
-*   LoRaWAN support
-*   APRS and HF-APRS mediums
-*   Transmitting pictures through neo146 via SSTV
-*   Satellite Internet to circumvent censorships and infrastructure blocks
-*   Any suggestions from you!
+## Subscription
+
+*   Get higher rate limits by subscribing via: [Buy Me a Coffee](https://buymeacoffee.com/ooguz)
+*   After subscribing, use `/subscribe <your-email>` in Telegram or text "subscribe <your-email>" to the SMS number
+*   All your contribution will be used to maintain the service, rest will be donated to Free Software Association in Turkey (Özgür Yazılım Derneği) [https://oyd.org.tr](https://oyd.org.tr)
+*   Running this service costs about 20 EUR per month, and also ~3 cents/message for the SMS gateway. For a better experience and support the service, please consider subscribing.
 
 ## Donations
 
@@ -92,8 +97,6 @@ HTTP responses are not encoded by default, but can be requested with `b64=true` 
 *   [Özgür Yazılım Derneği](https://oyd.org.tr) - support
 
 This gateway is free software, licensed under GNU AGPL v3 or later. 
-
-- - -
 
 ## Warning
 

@@ -3,12 +3,12 @@ package test
 import (
 	"bytes"
 	"encoding/json"
+	"neo146/controllers"
+	"neo146/models"
+	"neo146/providers"
+	"neo146/services"
 	"net/http/httptest"
 	"os"
-	"smsgw/controllers"
-	"smsgw/models"
-	"smsgw/providers"
-	"smsgw/services"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"

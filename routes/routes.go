@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"smsgw/controllers"
+	"neo146/controllers"
 
 	"github.com/gofiber/fiber/v2"
 )

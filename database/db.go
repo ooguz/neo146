@@ -25,7 +25,7 @@ func InitDB() (*DB, error) {
 	// For now, we'll use SQLite
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = "smsgw.db"
+		dbPath = "neo146.db"
 	}
 
 	conn, err := sql.Open("sqlite3", dbPath)

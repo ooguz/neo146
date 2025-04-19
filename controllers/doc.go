@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"embed"
-	"smsgw/config"
+	"neo146/config"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"

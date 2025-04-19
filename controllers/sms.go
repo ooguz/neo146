@@ -3,10 +3,10 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
-	"smsgw/models"
-	"smsgw/providers"
-	"smsgw/services"
-	"smsgw/utils"
+	"neo146/models"
+	"neo146/providers"
+	"neo146/services"
+	"neo146/utils"
 	"strings"
 	"time"
 

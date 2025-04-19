@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"encoding/base64"
-	"smsgw/services"
+	"neo146/services"
 
 	"github.com/gofiber/fiber/v2"
 )

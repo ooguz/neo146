@@ -2,7 +2,7 @@ package services
 
 import (
 	"errors"
-	"smsgw/providers"
+	"neo146/providers"
 	"testing"
 )
 

@@ -2,27 +2,31 @@ package services
 
 import (
 	"fmt"
+	"neo146/providers"
+	"neo146/utils"
 	"os"
-	"smsgw/providers"
-	"smsgw/utils"
 	"time"
 )
 
-// SMSService handles sending SMS messages
+// SMSService handles SMS operations
 type SMSService struct {
-	smsManager *providers.Manager
+	ProviderManager *providers.Manager
+	MarkdownService *MarkdownService
+	TwitterService  *TwitterService
+	SearchService   *SearchService
+	WeatherService  *WeatherService
 }
 
 // NewSMSService creates a new SMS service
-func NewSMSService(smsManager *providers.Manager) *SMSService {
+func NewSMSService(providerManager *providers.Manager) *SMSService {
 	return &SMSService{
-		smsManager: smsManager,
+		ProviderManager: providerManager,
 	}
 }
 
 // SendSMS sends SMS messages through the SMS provider
 func (s *SMSService) SendSMS(messages []providers.Message) error {
-	return s.smsManager.SendMessage(messages)
+	return s.ProviderManager.SendMessage(messages)
 }
 
 // PrepareAndSendSMS prepares and sends SMS messages
